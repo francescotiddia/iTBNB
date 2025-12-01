@@ -1,6 +1,7 @@
 from math import sqrt
 import numpy as np
 
+
 def _safe_div(n, d):
     """Safe division: returns 0 if denominator is 0."""
     return n / d if d != 0 else 0
@@ -30,6 +31,7 @@ def precision(tp, fp):
     """Precision = TP / (TP + FP)"""
     return _safe_div(tp, tp + fp)
 
+
 def mcc(tp, fp, tn, fn):
     """Matthews Correlation Coefficient"""
     tp = np.float64(tp)
@@ -44,6 +46,7 @@ def mcc(tp, fp, tn, fn):
         return 0.0
 
     return num / np.sqrt(den)
+
 
 def f1_score(tp, fp, fn):
     """F1 = 2 * Precision * Recall / (Precision + Recall)"""
@@ -85,5 +88,3 @@ def confusion_matrix_np(y_true, y_pred):
     y = np.bincount(y, minlength=4)
     y = y.reshape(2, 2)
     return y
-
-

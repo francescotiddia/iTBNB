@@ -1,5 +1,5 @@
 from sklearn.utils.estimator_checks import parametrize_with_checks
-from TbNB import TbNB
+from models.tbnb import TbNB
 
 
 @parametrize_with_checks([TbNB()])

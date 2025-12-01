@@ -5,6 +5,5 @@ pandas
 matplotlib
 contractions
 nltk
-beautifulsoup4
 textblob
 Unidecode

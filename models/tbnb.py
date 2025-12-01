@@ -5,32 +5,110 @@ from scipy.sparse import csr_matrix
 from sklearn.base import BaseEstimator, ClassifierMixin
 
 from utils.decision import *
-from utils.threshold import ThresholdOptimizer
+from models.threshold import ThresholdOptimizer
 from utils.validation import _validate_predict_inputs, _validate_fit_inputs, check_priors
 
 
 class TbNB(ClassifierMixin, BaseEstimator):
     """
-        Threshold-based Naïve Bayes (Tb-NB) classifier.
+    Threshold-based Naïve Bayes (Tb-NB) classifier.
 
-        Parameters
-        ----------
-        fit_prior : bool, default=True
-            Whether to estimate class prior probabilities from the data.
-        class_prior : array-like of shape (2,), optional
-            Predefined class priors. Used only if `fit_prior=False`.
-        alpha : float, default=1
-            Additive (Laplace) smoothing parameter.
-        iterative : bool, default=False
-            Whether to enable iterative thresholding (iTb-NB).
+    This classifier implements a Naïve Bayes model in which the
+    final decision is taken by comparing the log-likelihood ratio score
+    against an optimized threshold τ. Threshold optimization can be performed
+    via cross-validation, and an optional iterative refinement procedure
+    (iTb-NB) can be enabled.
 
-        References
-        ----------
-        Romano, M., Zammarchi, G., & Conversano, C. (2024).
-            *Iterative Threshold-Based Naïve Bayes Classifier*.
-            Statistical Methods & Applications, 33, 235–265.
-            https://doi.org/10.1007/s10260-023-00721-1
-        """
+    Parameters
+    ----------
+    fit_prior : bool, default=True
+        Whether to estimate class prior probabilities from the training data.
+        If ``False``, `class_prior` must be provided.
+
+    class_prior : array-like of shape (2,), optional
+        Prior probabilities for the classes ``[P(y=0), P(y=1)]``.
+        Used only when ``fit_prior=False``.
+
+    alpha : float, default=1
+        Additive (Laplace) smoothing parameter applied to conditional
+        feature counts.
+
+    iterative : bool, default=False
+        If ``True``, applies the iterative thresholding procedure (iTb-NB).
+        Requires a fitted threshold.
+
+    optimize_threshold : bool, default=True
+        Whether to perform threshold optimization during method .fit()
+
+    criterion : string
+        Metric used to select the optimal decision threshold. Must be one
+        self.AVAILABLE_CRITERIA
+
+    tau_grid : {"observed", tuple of float, array-like}, default="observed"
+        If ``"observed"``, threshold candidates are generated from empirical
+        score percentiles (1st–99th).
+        If a tuple ``(low, high)``, thresholds are generated uniformly from
+        that interval.
+        If array-like, the values are interpreted as an explicit list of
+        thresholds to evaluate.
+
+    K : int, default=5
+        Number of cross-validation folds used for threshold optimization.
+
+    n_tau : int, default=50
+        Number of threshold candidates to evaluate.
+
+    random_state : int, default=42
+        Random seed used for cross-validation splits.
+
+    p_iter : float, default=0.2
+        Parameter controlling the fraction of previously (re)classified samples
+        used to estimate σ during the iterative refinement process.
+
+    s_iter : int, default=20
+        Minimum number of observations required for an iterative refinement step
+
+    Attributes
+    ----------
+    classes_ : ndarray of shape (2,)
+        Class labels seen during .fit()
+
+    n_features_in_ : int
+        Number of features in the input dataset.
+
+    class_prior_ : ndarray of shape (2,)
+        Estimated or user-provided class prior probabilities.
+
+    class_occurrences_ : ndarray of shape (2,)
+        Number of samples observed for each class.
+
+    feature_counts_ : ndarray of shape (2, n_features)
+        Feature occurrence counts conditional on class.
+
+    log_conditional_pos_ : ndarray of shape (2, n_features)
+        Log-probabilities of feature presence given each class.
+
+    log_conditional_neg_ : ndarray of shape (2, n_features)
+        Log-probabilities of feature absence given each class.
+
+    threshold_ : float
+        Selected decision threshold τ. Available only if
+        ``optimize_threshold=True``
+
+    optimizer_ : ThresholdOptimizer
+        Fitted threshold optimizer (when threshold optimization is enabled).
+
+    decisions_ :
+        Sequence of iterative threshold refinement steps, available
+        only when ``iterative=True``.
+
+    References
+    ----------
+    Romano, M., Zammarchi, G., & Conversano, C. (2024).
+    *Iterative Threshold-Based Naïve Bayes Classifier*.
+    Statistical Methods & Applications, 33, 235–265.
+    https://doi.org/10.1007/s10260-023-00721-1
+    """
 
     AVAILABLE_CRITERIA = ['precision',
                           'recall',
@@ -179,35 +257,20 @@ class TbNB(ClassifierMixin, BaseEstimator):
 
     ):
         """
-        Fit the Tb-NB classifier to training data.
+        Fit the Tb-NB classifier.
 
         Parameters
         ----------
-        X : matrix of shape (n_samples, n_features)
-            Binary Bag-of-Words matrix.
+        X : {array-like, sparse matrix} of shape (n_samples, n_features)
+            Bag-of-Words feature matrix.
+
         y : array-like of shape (n_samples,)
-             Binary class labels (0 or 1).
-        optimize_threshold : bool, default=True
-            Whether to estimate an optimal decision threshold τ via cross-validation.
-        criterion : {"precision", "recall", "specificity", "fpr", "f1",
-             "mcc", "me", "fnr", "accuracy", "balanced_error"}, default="balanced_error"
-            Metric used to select the optimal threshold.
-        tau_grid : {"observed", tuple of (low, high)}, default="observed"
-            Range or method for generating candidate thresholds.
-        K : int, default=5
-            Number of folds for cross-validation threshold optimization.
-        n_tau : int, default=50
-            Number of threshold candidates to evaluate.
-        random_state: int, default=42
-            Seed used for train-test split.
 
         Returns
         -------
         self : TbNB
-            Fitted classifier.
-
+            Fitted estimator.
         """
-
         if self.criterion not in self.AVAILABLE_CRITERIA:
             raise ValueError("{} is not an available criterion.".format(self.criterion))
 
@@ -245,6 +308,11 @@ class TbNB(ClassifierMixin, BaseEstimator):
             tau_grid = np.linspace(low, high, self.n_tau)
         elif isinstance(self.tau_grid, tuple) and len(self.tau_grid) == 2:
             tau_grid = np.linspace(self.tau_grid[0], self.tau_grid[1], self.n_tau)
+        elif isinstance(self.tau_grid, (list, np.ndarray)):
+            tau_grid = np.sort(np.asarray(self.tau_grid))
+        else:
+            raise ValueError("tau_grid must be 'observed', a (low, high) tuple, or array-like.")
+
 
         if self.optimize_threshold:
             optimizer = ThresholdOptimizer(
@@ -275,18 +343,52 @@ class TbNB(ClassifierMixin, BaseEstimator):
 
         return self
 
-    # TODO: ora come ora non puoi modificare i parametri della iterazione
-
     def save_model(self, filename):
+        """
+        Save the fitted model to disk using pickle.
+
+        Parameters
+        ----------
+        filename : str
+        Path to the output file.
+        """
+
         with open(filename, "wb") as f:
             pickle.dump(self, f)
 
     @staticmethod
     def load(filename):
+        """
+        Load a pickled Tb-NB model from disk.
+
+        Parameters
+        ----------
+        filename : str
+        Path to the pickle file.
+
+        Returns
+        -------
+        model : TbNB
+        Loaded classifier instance.
+        """
         with open(filename, "rb") as f:
             return pickle.load(f)
 
     def predict_scores(self, X: csr_matrix):
+        """
+        Compute log-likelihood ratio scores for samples.
+
+        Parameters
+        ----------
+        X : {array-like, sparse matrix} of shape (n_samples, n_features)
+        Input samples.
+
+        Returns
+        -------
+        scores : ndarray of shape (n_samples,)
+        Log-likelihood ratio scores used for thresholding.
+        """
+
         Lw = self.lw_present_
         Lnw = self.lw_absent_
 
@@ -298,29 +400,54 @@ class TbNB(ClassifierMixin, BaseEstimator):
 
         return scores
 
-    def predict(self, X, threshold=None):
+    def predict(self, X, threshold=None, iterative=None):
+
+        """
+        Predict class labels for samples in X.
+
+        Parameters
+        ----------
+        X : {array-like, sparse matrix} of shape (n_samples, n_features)
+            Input samples.
+
+        threshold : float, optional
+            Decision threshold τ.
+            If ``None``, uses ``self.threshold_`` estimated during ``fit()``.
+            If the model was fitted with ``optimize_threshold=False`` and
+            no threshold is passed, a ``ValueError`` is raised.
+
+        iterative : bool, optional
+            If ``None``, uses the ``iterative`` setting defined at initialization
+            (i.e., ``self.iterative``).
+            If provided, overrides the model’s default iterative mode without
+            modifying the internal state.
+            This allows performing standard TbNB predictions even when the model
+            was fitted with ``iterative=True``.
+
+        Returns
+        -------
+        y_pred : ndarray of shape (n_samples,)
+            Predicted class labels.
+        """
 
         X = _validate_predict_inputs(self, X)
-
         scores = self.predict_scores(X)
+
+        use_iterative = self.iterative if iterative is None else iterative
 
         tau = threshold if threshold is not None else getattr(self, "threshold_", None)
         if tau is None:
-            raise ValueError(
-                "No threshold specified. Fit must run threshold optimization or pass threshold=..."
-            )
+            raise ValueError("No threshold specified...")
 
         pred = (scores >= tau).astype(int)
 
-        if self.iterative:
-            if not hasattr(self, "decisions_"):
-                warnings.warn("Iterative mode enabled but no decisions_ found.")
-                return pred
-            pred_int = predict_from_decisions(scores, self.decisions_, default_threshold=tau).astype(int)
-        else:
-            pred_int = pred
+        if not use_iterative:
+            return self.classes_[pred]
+
+        if not hasattr(self, "decisions_"):
+            warnings.warn("Iterative mode enabled but no decisions_ found.")
+            return self.classes_[pred]
+
+        pred_int = predict_from_decisions(scores, self.decisions_, default_threshold=tau)
         return self.classes_[pred_int]
 
-# TODO: migliorare i nomi delle variabili e dei metodi
-
-# TODO: verificare che funzioni con altre label

@@ -19,6 +19,28 @@ def try_float(v):
 
 
 def encode_labels(y):
+    """
+    Encode binary labels into {0, 1}.
+
+    Parameters
+    ----------
+    y : array-like of shape (n_samples,)
+        Input labels, arbitrary dtype.
+
+    Returns
+    -------
+    encoded : ndarray of shape (n_samples,)
+        Labels converted to {0, 1} according to sorted unique classes.
+
+    classes : ndarray of shape (2,)
+        The unique classes found in ``y`` in sorted order.
+
+    Raises
+    ------
+    ValueError
+        If ``y`` contains more or fewer than two unique classes.
+    """
+
     y = np.asarray(y)
     classes = np.unique(y)
     if len(classes) != 2:
@@ -33,12 +55,38 @@ def encode_labels(y):
 
 def check_y(y, *, return_classes=False, allow_none=False):
     """
-    Validate y for binary classification.
+    Validate and encode the target vector ``y`` for binary classification.
 
-    - Accepts strings or numbers
-    - Converts labels to {0, 1} using sklearn-style LabelEncoder
-    - Warns if column vector passed
-    - Ensures 1-D target vector
+    This function:
+    - Accepts numeric or string labels.
+    - Ensures ``y`` is a 1-dimensional array.
+    - Warns if ``y`` is passed as a column vector.
+    - Converts labels to {0, 1}.
+    - Returns the encoded labels and optionally the original classes.
+
+    Parameters
+    ----------
+    y : array-like or None
+        Target labels.
+
+    return_classes : bool, default=False
+        If True, also return the sorted unique classes.
+
+    allow_none : bool, default=False
+        If True, ``y=None`` is accepted and returned as None.
+
+    Returns
+    -------
+    y_out : ndarray of shape (n_samples,)
+        Encoded labels {0, 1}, or None if ``y=None`` and ``allow_none=True``.
+
+    classes : ndarray of shape (2,), optional
+        Returned only if ``return_classes=True``.
+
+    Raises
+    ------
+    ValueError
+        If ``y`` is None (unless allowed), not 1-D, or not binary.
     """
 
     if y is None:
@@ -68,8 +116,24 @@ def check_y(y, *, return_classes=False, allow_none=False):
 
 def check_priors(priors):
     """
-    Validate custom class priors for binary NB.
+    Validate class priors for binary Naive Bayes.
+
+    Parameters
+    ----------
+    priors : array-like of shape (2,)
+        Prior probabilities for the negative and positive class.
+
+    Returns
+    -------
+    priors_out : ndarray of shape (2,)
+        Validated priors summing to 1.0.
+
+    Raises
+    ------
+    ValueError
+        If priors are None, not length 2, or do not sum to 1.
     """
+
     if priors is None:
         raise ValueError("fit_prior was set to False but no class priors were provided")
 
@@ -91,8 +155,47 @@ def check_x(
         allow_object=False,
 ):
     """
-    Validate and standardize input features for Tb-Naive Bayes.
+    Validate and convert input feature matrix ``X`` for Tb-Naive Bayes.
+
+    This function:
+    - Accepts dense or sparse arrays.
+    - Ensures X is 2-dimensional with at least one feature and one sample.
+    - Converts dense arrays to a CSR binary matrix indicating feature presence.
+    - Coerces object arrays to numeric format when possible.
+    - Validates absence of NaN / Inf values.
+
+    Parameters
+    ----------
+    X : array-like or sparse matrix of shape (n_samples, n_features)
+        Input feature matrix. Dense arrays are binarized using ``X > 0``.
+        Sparse matrices must be CSR-compatible; their `.data` attribute is
+        binarized.
+
+    expected_n_features : int or None, default=None
+        If not None, check that ``X.shape[1]`` matches this number.
+        Used during ``predict`` to check consistency with fitted model.
+
+    dtype : data-type, default=np.int8
+        Target dtype for the binary representation.
+
+    allow_object : bool, default=False
+        Whether to permit object dtypes without attempting float conversion.
+
+    Returns
+    -------
+    X_out : csr_matrix of shape (n_samples, n_features)
+        Binarized sparse feature matrix.
+
+    Raises
+    ------
+    ValueError
+        If X has incorrect dimensions, contains NaN/Inf, contains complex values,
+        or mismatched number of features.
+
+    TypeError
+        If X cannot be converted to a numeric array.
     """
+
 
     if issparse(X):
         X = X.tocsr()
@@ -177,28 +280,35 @@ def check_x(
 
 def _validate_fit_inputs(estimator, X, y):
     """
-        Validate inputs for estimator.fit(X, y) in a binary classifier.
+    Validate inputs for ``estimator.fit(X, y)`` in a binary classifier.
 
-        Parameters
-        ----------
-        estimator : object
-            Estimator instance.
-        X : array-like or sparse matrix
-            Training data.
-        y : array-like or None
-            Target labels.
+    Parameters
+    ----------
+    estimator : object
+        Estimator instance that will be fitted.
 
-        Returns
-        -------
-        X_out : csr_matrix
-        y_out : tuple or None
-            (encoded_y, classes) or None if y=None.
+    X : array-like or sparse matrix
+        Training feature matrix.
 
-        Raises
-        ------
-        ValueError
-            For invalid shapes, empty data, or non-binary targets.
-        """
+    y : array-like or None
+        Training labels. If None, only X is validated and
+        ``estimator.n_features_in_`` is set for compatibility with
+        scikit-learn estimators that accept y=None.
+
+    Returns
+    -------
+    X_out : csr_matrix
+        Validated and binarized feature matrix.
+
+    y_out : tuple or None
+        ``(encoded_y, classes)`` if ``y`` is provided, else None.
+
+    Raises
+    ------
+    ValueError
+        If X is invalid, if y is not binary, or if shapes are inconsistent.
+    """
+
 
     X = check_x(X)
 

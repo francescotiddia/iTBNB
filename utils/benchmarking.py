@@ -2,7 +2,7 @@ import time
 
 from sklearn.metrics import accuracy_score, f1_score
 
-from TbNB import TbNB
+from models.tbnb import TbNB
 
 
 def run_experiment(iterative_flag, x_train, y_train, x_test, y_test):

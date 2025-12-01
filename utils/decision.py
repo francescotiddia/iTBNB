@@ -2,7 +2,6 @@ import numpy as np
 from scipy.stats import gaussian_kde
 from dataclasses import dataclass
 
-
 @dataclass
 class Decision:
     iteration: int
@@ -39,29 +38,29 @@ def _estimate_sigma(X, tau, p):
 
 def _intersect_threshold(scores_pos, scores_neg):
     """
-                Estimate the intersection point (new threshold) between two class densities.
+    Estimate the intersection point (new threshold) between two class densities.
 
-                Parameters
-                ----------
-                scores_pos : array-like of shape (n_pos,)
-                    Scores associated with positive class instances.
-                scores_neg : array-like of shape (n_neg,)
-                    Scores associated with negative class instances.
+    Parameters
+    ----------
+    scores_pos : array-like of shape (n_pos,)
+        Scores associated with positive class instances.
+    scores_neg : array-like of shape (n_neg,)
+        Scores associated with negative class instances.
 
-                Returns
-                -------
-                tau : float
-                    Intersection point of the two class densities (refined threshold).
-                x_max_pos : float
-                    Score corresponding to the argmax of the positive class density.
-                x_max_neg : float
-                    Score corresponding to the argmax of the negative class density.
+    Returns
+    -------
+    tau : float
+        Intersection point of the two class densities (refined threshold).
+    x_max_pos : float
+        Score corresponding to the argmax of the positive class density.
+    x_max_neg : float
+        Score corresponding to the argmax of the negative class density.
 
-                Raises
-                ------
-                InterruptedError
-                    If the two densities do not intersect (no sign change in their difference).
-                """
+    Raises
+    ------
+    InterruptedError
+    If the two densities do not intersect (no sign change in their difference).
+    """
     f_pos = gaussian_kde(scores_pos)
     f_neg = gaussian_kde(scores_neg)
     low = min(scores_pos.min(), scores_neg.min())
@@ -152,7 +151,6 @@ def predict_from_decisions(X, decisions, default_threshold=0.0):
     """
         Generate class predictions using a sequence of refined decision rules.
 
-
         Parameters
         ----------
         X : array-like of shape (n_samples,)
@@ -166,7 +164,7 @@ def predict_from_decisions(X, decisions, default_threshold=0.0):
         -------
         y_pred : ndarray of shape (n_samples,)
             Predicted class labels (0 or 1) after applying all iterative decisions.
-        """
+    """
 
     X = np.asarray(X)
 

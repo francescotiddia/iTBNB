@@ -6,6 +6,7 @@ from nltk.stem import SnowballStemmer
 import pandas as pd
 import numpy as np
 
+
 def normalize_input(X):
     if isinstance(X, str):
         return [X]
@@ -28,17 +29,17 @@ def normalize_input(X):
 class TextPreprocessor(BaseEstimator, TransformerMixin):
 
     def __init__(
-        self,
-        language="english",
-        remove_html=True,
-        remove_urls=True,
-        lower=True,
-        expand_contr=False,
-        remove_punct=True,
-        remove_sw=True,
-        stem=True,
-        sw_add=None,
-        sw_remove=None,
+            self,
+            language="english",
+            remove_html=True,
+            remove_urls=True,
+            lower=True,
+            expand_contr=False,
+            remove_punct=True,
+            remove_sw=True,
+            stem=True,
+            sw_add=None,
+            sw_remove=None,
     ):
         self.language = language
         self.remove_html = remove_html
@@ -50,7 +51,6 @@ class TextPreprocessor(BaseEstimator, TransformerMixin):
         self.stem = stem
         self.sw_add = sw_add
         self.sw_remove = sw_remove
-
 
         self._url_re = re.compile(r"https?://\S+|www\.\S+")
         self._punct_re = re.compile(f"[{re.escape(string.punctuation)}]")
@@ -88,7 +88,6 @@ class TextPreprocessor(BaseEstimator, TransformerMixin):
         for text in X:
 
             if self.remove_html:
-
                 text = html_re_sub(" ", text)
 
             if self.remove_urls:

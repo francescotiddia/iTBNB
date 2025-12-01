@@ -11,8 +11,7 @@ class ThresholdOptimizer(BaseEstimator):
         Cross-validated threshold optimizer for the Threshold-based Naïve Bayes (Tb-NB) classifier.
 
         The `ThresholdOptimizer` class estimates the optimal decision threshold (τ)
-        that minimizes Type I or Type II errors, or maximizes classification accuracy,
-        using K-fold cross-validation. It can be applied to any estimator implementing
+        that minimizes or maximizes a relevant metric. It can be applied to any estimator implementing
         a `fit(X, y)` and `predict_scores(X)` interface.
 
         Attributes
@@ -21,7 +20,7 @@ class ThresholdOptimizer(BaseEstimator):
             Estimator class implementing `fit(X, y)` and `predict_scores(X)`.
          fit_params:
             Arguments passed to .fit(X, y) methods inside cross-validation loops
-        """
+    """
     available_metrics = ['precision',
                          'recall',
                          'specificity',
@@ -44,6 +43,23 @@ class ThresholdOptimizer(BaseEstimator):
         self._is_fitted = False
 
     def _best(self, mat, maximize=True):
+        """
+        Select the best threshold τ for a given metric matrix.
+
+        Parameters
+        ----------
+        mat : ndarray of shape (K, n_tau)
+            Cross-validated metric values for each fold and τ.
+
+        maximize : bool, default=True
+            If True, selects τ maximizing the metric; otherwise minimizes.
+
+        Returns
+        -------
+        tau : float
+            Best threshold according to the mean metric across folds.
+        """
+
         if mat is None or self.tau_grid is None:
             return None
         mean = np.mean(mat, axis=0)
@@ -52,24 +68,24 @@ class ThresholdOptimizer(BaseEstimator):
 
     def _generate_folds(self, X, y, K, random_state=None):
         """
-                Create K random (non-stratified) cross-validation folds.
+            Create K random (non-stratified) cross-validation folds.
 
-                Parameters
-                ----------
-                X : ndarray of shape (n_samples, n_features)
-                    Feature matrix.
-                y : ndarray of shape (n_samples,)
-                    Binary target labels.
-                K : int
-                    Number of folds to generate.
-                random_state : int, default=42
-                    Random seed for reproducibility.
+            Parameters
+            ----------
+            X : ndarray of shape (n_samples, n_features)
+                Feature matrix.
+            y : ndarray of shape (n_samples,)
+                Binary target labels.
+            K : int
+                Number of folds to generate.
+            random_state : int, default=42
+                Random seed for reproducibility.
 
-                Returns
-                -------
-                folds : list of ndarray
-                    List containing index arrays for each test fold.
-                """
+            Returns
+            -------
+            folds : list of ndarray
+                List containing index arrays for each test fold.
+        """
         if X.shape[0] != y.shape[0]:
             raise ValueError("X and y must share the same length.")
         rng = np.random.default_rng(random_state)
@@ -80,7 +96,7 @@ class ThresholdOptimizer(BaseEstimator):
 
     def fit(self, X, y):
         """
-        Perform K-fold cross-validation to estimate Type I/II errors
+        Perform K-fold cross-validation to estimate relevant metrics
         for each candidate threshold τ.
 
         Parameters
@@ -145,8 +161,30 @@ class ThresholdOptimizer(BaseEstimator):
     @staticmethod
     def _get_scores(model, X):
         """
-        Try in order: predict_scores → predict_proba → decision_function.
-        Returns a 1D array of scores suitable for thresholding.
+        Retrieve continuous scores from a fitted model.
+
+        Tries the following methods in order:
+        1. ``predict_scores(X)``
+        2. ``predict_proba(X)`` (returns column 1 if shape is (n, 2))
+        3. ``decision_function(X)``
+
+        Parameters
+        ----------
+        model : object
+            Fitted estimator.
+
+        X : ndarray of shape (n_samples, n_features)
+            Test data.
+
+        Returns
+        -------
+        scores : ndarray of shape (n_samples,)
+            Continuous decision scores suitable for thresholding.
+
+        Raises
+        ------
+        AttributeError
+            If none of the supported scoring methods are available.
         """
 
         if hasattr(model, "predict_scores"):
@@ -192,10 +230,29 @@ class ThresholdOptimizer(BaseEstimator):
     @staticmethod
     def vectorized_confusion_counts(scores, y, tau_grid):
         """
-        Compute TP, TN, FP, FN for all thresholds τ in a vectorized way.
-        Optimized for very large datasets.
-        """
+            Compute TP, TN, FP, FN for each threshold τ in a vectorized manner.
 
+            The algorithm sorts scores once and uses cumulative counts to derive confusion
+            components for all
+
+            Parameters
+            ----------
+            scores : ndarray of shape (n_samples,)
+                Continuous model scores.
+
+            y : ndarray of shape (n_samples,)
+                Binary labels {0, 1}.
+
+            tau_grid : ndarray of shape (n_tau,)
+                Candidate thresholds.
+
+            Returns
+            -------
+            TP : ndarray of shape (n_tau,)
+            TN : ndarray of shape (n_tau,)
+            FP : ndarray of shape (n_tau,)
+            FN : ndarray of shape (n_tau,)
+            """
         sort_idx = np.argsort(scores)
         scores_sorted = scores[sort_idx]
         y_sorted = y[sort_idx]
@@ -219,6 +276,23 @@ class ThresholdOptimizer(BaseEstimator):
 
     def _validate_input(self):
 
+        """
+        Validate and sanitize user-provided input parameters.
+
+        Returns
+        -------
+        fit_params : dict
+            Validated ``fit_params`` dictionary.
+
+        tau_grid : ndarray
+            Sorted threshold grid. Defaults to ``np.arange(-3, 3, 0.1)`` if none was provided.
+
+        Raises
+        ------
+        ValueError
+            If ``K < 2``.
+        """
+
         if self.fit_params is None:
             fit_params = {}
         else:
@@ -236,6 +310,17 @@ class ThresholdOptimizer(BaseEstimator):
         return fit_params, tau_grid
 
     def _compute_taus(self):
+        """
+       Compute the optimal τ for each metric after cross-validation.
+
+       For each metric matrix in ``metric_mats_``, selects τ maximizing or
+       minimizing the metric as appropriate. Also computes the threshold
+       minimizing the balanced error rate.
+
+       Returns
+       -------
+       self : ThresholdOptimizer
+       """
         self.best_tau_ = {}
         for m in self.available_metrics:
             mat = self.metric_mats_[m]
@@ -247,6 +332,24 @@ class ThresholdOptimizer(BaseEstimator):
         return self
 
     def summary(self):
+        """
+        Summarize cross-validated performance at the best threshold for each metric.
+
+        Returns
+        -------
+        summary : pandas.DataFrame
+            A dataframe with columns:
+            - ``metric`` : metric name
+            - ``tau_best`` : selected threshold
+            - ``mean_at_best`` : mean metric value at ``tau_best`` across folds
+            - ``std_at_best`` : standard deviation across folds
+
+        Raises
+        ------
+        RuntimeError
+            If the optimizer has not been fitted.
+        """
+
         if not self._is_fitted:
             raise RuntimeError("Call fit() before summary().")
 
