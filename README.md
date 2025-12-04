@@ -7,8 +7,8 @@
 
 ##  Overview
 
-This repository implements the **Threshold-Based Naïve Bayes (Tb-NB)** classifier and its iterative variant (iTb-NB) as proposed by Romano, M., Contu, G., Mola, F., & Conversano, C. (2023).
-and Romano, M., Zammarchi, G., & Conversano, C. (2024).
+This repository implements the **Threshold-Based Naïve Bayes (Tb-NB)** classifier and its iterative variant (iTb-NB) as proposed by Romano M., Contu G., Mola F., & Conversano C. (2023).
+and Romano M., Zammarchi G., & Conversano C. (2024).
 
 
 The Tb-NB framework extends the classical Naïve Bayes model by introducing a tunable decision threshold (τ) that separates classes in score space.
